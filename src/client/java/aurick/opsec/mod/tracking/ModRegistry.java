@@ -692,6 +692,19 @@ public class ModRegistry {
         return dependencyClosure.contains(modId);
     }
 
+    /**
+     * Whether OpSec currently exposes {@code modId} to servers, i.e. whether its channels, known
+     * packs and translation keys may be visible. Vanilla mode exposes nothing; otherwise the
+     * effective whitelist (AUTO / CUSTOM plus dependency closure) decides. Single source of truth
+     * that is also mirrored into ExploitPreventer by {@code ExploitPreventerBridge}.
+     */
+    public static boolean isModExposed(String modId) {
+        if (modId == null) return false;
+        SpoofSettings settings = OpsecConfig.getInstance().getSettings();
+        if (settings.isVanillaMode() || !settings.isWhitelistEnabled()) return false;
+        return isModEffectivelyWhitelisted(modId, settings);
+    }
+
     /** Mirrors {@link #isWhitelistedChannel} for known packs. Real-vanilla namespace always allowed; unattributed mod packs blocked. */
     public static boolean isWhitelistedKnownPack(String namespace, String id, String version) {
         if (VANILLA_PACK_NAMESPACE.equals(namespace)) return true;
@@ -1008,6 +1021,48 @@ public class ModRegistry {
      * @param namespace The channel namespace (e.g., "jm")
      * @param modId The owning mod ID (e.g., "journeymap")
      */
+    /**
+     * Namespaces shared by many mods (convention tags, loader/platform namespaces). They don't
+     * identify a single mod, so the installed-namespace scan never maps them to one.
+     */
+    private static final Set<String> SHARED_NAMESPACES = Set.of(
+        VANILLA_PACK_NAMESPACE, FABRIC_PACK_NAMESPACE, "realms", "c", "fabric", "forge", "neoforge", "common"
+    );
+
+    /**
+     * Scans every installed mod's {@code assets/} and {@code data/} folders and maps each namespace
+     * found there to that mod (e.g. {@code plasmo} -> {@code plasmovoice}), so channels and known
+     * packs that use a namespace different from the mod id are attributed to the right mod.
+     * Exact folder names only, no fuzzy matching; shared namespaces are skipped.
+     *
+     * <p>Adapted from OpSec Community Edition by tufkan1 (GPL-3.0), with the shared-namespace guard
+     * added in this fork.</p>
+     */
+    public static void scanInstalledModNamespaces() {
+        for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+            String modId = mod.getMetadata().getId();
+            if (PLATFORM_MODS.contains(modId)) continue;
+            for (java.nio.file.Path root : mod.getRootPaths()) {
+                scanDirNamespaces(root.resolve("assets"), modId);
+                scanDirNamespaces(root.resolve("data"), modId);
+            }
+        }
+    }
+
+    private static void scanDirNamespaces(java.nio.file.Path parentDir, String modId) {
+        if (parentDir == null || !java.nio.file.Files.isDirectory(parentDir)) return;
+        try (var stream = java.nio.file.Files.list(parentDir)) {
+            stream.filter(java.nio.file.Files::isDirectory).forEach(dir -> {
+                String namespace = dir.getFileName().toString().replace("/", "");
+                if (!namespace.isEmpty() && !SHARED_NAMESPACES.contains(namespace)) {
+                    recordNamespaceMapping(namespace, modId);
+                }
+            });
+        } catch (Exception ignored) {
+            // Unreadable mod root: nothing to map.
+        }
+    }
+
     public static void recordNamespaceMapping(String namespace, String modId) {
         if (
             namespace == null || modId == null || namespace.equals(modId)

@@ -10,7 +10,7 @@
 <p align="center">
 <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-1.20%20%E2%80%93%2026.3-3C8527">
 <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-DBD0B4">
-<img alt="Version" src="https://img.shields.io/badge/Version-1.1.8--fork-6e5494">
+<img alt="Version" src="https://img.shields.io/badge/Version-1.1.9--fork-6e5494">
 <img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue">
 </p>
 
@@ -21,8 +21,9 @@ The original **OpSec** by Aurick ([aurickk/OpSec](https://github.com/aurickk/OpS
 **I'm keeping this project alive.** This fork continues OpSec under the same GPL-3.0 license and brings it to the latest Minecraft versions — starting with **Minecraft 26.3**. Please give it a try, and report anything that doesn't work so it can be fixed.
 
 - ✅ Supports **Minecraft 26.3** (plus every version the original supported)
-- ✅ **Works alongside [ExploitPreventer](https://github.com/NikOverflow/ExploitPreventer)** — see [ExploitPreventer compatibility](#exploitpreventer-compatibility)
+- ✅ **Works alongside [ExploitPreventer](https://github.com/NikOverflow/ExploitPreventer)** — both mods share one whitelist and never cover the same protection twice, see [ExploitPreventer compatibility](#exploitpreventer-compatibility)
 - ✅ All original features, plus fixes for the internals Minecraft 26.3 changed
+- ✅ Every release is built automatically by GitHub Actions — the newest jars are always on the [Releases](../../releases) page
 
 All credit for the original mod goes to Aurick. Builds from this fork are community builds, **not** official releases of the original project.
 
@@ -237,17 +238,20 @@ OpSec disables Meteor's `AbstractSignEditScreenMixin`, so OpSec's own protection
 
 ### ExploitPreventer compatibility
 
-OpSec and [ExploitPreventer](https://github.com/NikOverflow/ExploitPreventer) can be installed together. If ExploitPreventer is present, OpSec hands the overlapping protections over to it:
+OpSec and [ExploitPreventer](https://github.com/NikOverflow/ExploitPreventer) (EP, tested with 1.2.1) work together. Each protection is handled by exactly one mod, and both use the same mod whitelist, so a server sees one consistent client.
 
-- [Spoof as Vanilla](#spoof-as-vanilla) (brand spoofing)
-- [Channel Spoofing](#channel-spoofing)
-- [Known-Pack Filtering](#known-pack-filtering)
-- [Isolate Pack Cache](#isolate-pack-cache)
+**Handled by ExploitPreventer** (greyed out in OpSec while EP is installed; your OpSec settings are kept):
+- [Key Resolution Protection](#key-resolution-protection) for translation keys and mod keybinds
 - [Block Local URLs](#block-local-urls)
-- [Key Resolution Protection](#key-resolution-protection)
-- [Mod Whitelist](#mod-whitelist)
+- [Isolate Pack Cache](#isolate-pack-cache)
 
-These settings are greyed out but your preferences are kept; if you remove ExploitPreventer later, they come back automatically. Everything else stays fully active: alerts, chat signing, the account manager, telemetry blocking, [Strip Mod Shader Overrides](#strip-mod-shader-overrides) and the [Meteor Fix](#meteor-fix). Note that some OpSec-only details (such as its channel spoofing) are not used while ExploitPreventer handles that area.
+**Still handled by OpSec** (EP does not provide these):
+- [Spoof as Vanilla](#spoof-as-vanilla) (vanilla brand), [Channel Spoofing](#channel-spoofing) and [Known-Pack Filtering](#known-pack-filtering)
+- [Bypass Server Pack Requirement](#bypass-server-pack-requirement) and [Strip Mod Shader Overrides](#strip-mod-shader-overrides)
+- **Fake Default Keybinds** — EP answers vanilla keybinds with your real binding; OpSec still reports the defaults
+- [Mod Whitelist](#mod-whitelist), chat signing, account manager, telemetry blocking, alerts and the [Meteor Fix](#meteor-fix)
+
+**How they stay in sync:** OpSec passes its mod whitelist to EP through EP's official API. A mod whose channels OpSec shows is allowed in EP, every other mod is blocked — so channels, known packs and translation keys always tell the same story (in vanilla mode everything is blocked). OpSec also tells EP that the language keys of server packs stripped by OpSec belong to the server pack, so they resolve exactly like on a vanilla client. EP's own settings file is never changed.
 
 ---
 
@@ -317,7 +321,27 @@ From [No Chat Reports](https://modrinth.com/mod/no-chat-reports).
 
 Minecraft sends telemetry to Mojang, such as game events, performance metrics, client configuration and usage statistics. With telemetry blocking on, OpSec stops this. Gameplay is not affected.
 
-## Fork changes (v1.1.8-fork)
+## Fork changes
+
+### v1.1.9-fork
+
+**ExploitPreventer compatibility (tested with EP 1.2.1 on 26.3):**
+- Fixed: with both mods installed, the language keys of server resource packs did not resolve (EP counted keys from OpSec-stripped packs as "OpSec's keys" and blocked them). Servers could detect this; the keys now resolve like on a vanilla client.
+- Fixed: OpSec switched off *Spoof as Vanilla*, channel spoofing, known-pack filtering, *Bypass Server Pack Requirement* and the whitelist whenever EP was installed, although EP does not provide any of them. They now stay active.
+- Fixed: with EP, your real vanilla keybinds were visible to servers. *Fake Default Keybinds* now keeps working.
+- New: OpSec pushes its mod whitelist into EP via EP's API, so both mods expose exactly the same mods.
+- Removed the `conflicts: exploitpreventer` entry from the mod metadata.
+
+**Merged from [OpSec Community Edition](https://github.com/tufkan1/OpSec) by tufkan1 (reviewed, adapted):**
+- Every mod's `assets/` and `data/` namespaces are mapped to that mod, so channels with namespaces like `plasmo` are attributed to the right mod (shared namespaces such as `c` or `fabric` are skipped; no fuzzy name matching).
+- Language files are found in all namespaces of a mod, not only `assets/<modid>/`.
+- Account manager: tokens up to 8192 characters, and a pasted launcher JSON is unpacked automatically.
+- GitHub Actions: every push builds all versions; a version tag publishes a release with all jars (without the Modrinth/CurseForge upload).
+- Not merged: fuzzy namespace matching (could attribute short namespaces to the wrong mod) and the TinyFD build dependency (TinyFD does not exist at runtime on 26.3; this fork uses SDL3 dialogs instead).
+
+**Testing:** headless 26.3 client against a local vanilla 26.3 server, with and without ExploitPreventer: all mixin targets of both mods apply (48 with EP, 31 without), and joining, server packs (MANUAL / ALWAYS ON), chat with signing OFF, vanilla brand, and probes for vanilla, mod, keybind (rebound key) and server-pack keys behave as expected.
+
+### v1.1.8-fork
 
 Minecraft 26.3 replaced several internals that OpSec relies on. Older Minecraft versions are still compiled exactly as before (via Stonecutter conditions).
 
@@ -383,6 +407,7 @@ The jars end up in `versions/<target>/build/libs/`:
 ## Credits & references
 
 - **[Aurick](https://github.com/aurickk/OpSec)** — creator of the original OpSec
+- [tufkan1 / OpSec Community Edition](https://github.com/tufkan1/OpSec) — namespace scan, language file scan, account token input and CI workflows (adapted)
 - [ExploitPreventer](https://github.com/NikOverflow/ExploitPreventer) — local URL blocking and key resolution protection
 - [LiquidBounce](https://github.com/CCBlueX/LiquidBounce/blob/nextgen/src/main/java/net/ccbluex/liquidbounce/injection/mixins/minecraft/util/MixinDownloadQueue.java) — isolated server resource pack cache
 - [Meteor Client](https://github.com/MeteorDevelopment/meteor-client) — session token login
@@ -394,7 +419,7 @@ The jars end up in `versions/<target>/build/libs/`:
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE). This fork is a modified version of the original OpSec; the changes are listed under [Fork changes](#fork-changes-v118-fork).
+GPL-3.0 — see [LICENSE](LICENSE). This fork is a modified version of the original OpSec; the changes are listed under [Fork changes](#fork-changes).
 
 ## Disclaimer
 

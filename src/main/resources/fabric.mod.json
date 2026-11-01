@@ -32,9 +32,6 @@
 			"environment": "client"
 		}
 	],
-	"conflicts": {
-		"exploitpreventer": "*"
-	},
 	"breaks": {
 		"ichor": "*",
 		"labymod": "*",

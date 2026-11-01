@@ -70,7 +70,9 @@ public class OpsecConfig {
         load();
         if (EXPLOIT_PREVENTER_LOADED) {
             Opsec.LOGGER.info(
-                "[OpSec] ExploitPreventer detected - compatibility mode active."
+                "[OpSec] ExploitPreventer detected - compatibility mode active: key resolution protection, " +
+                "local pack URL blocking and pack cache isolation are handled by ExploitPreventer; " +
+                "OpSec keeps channel/brand/known-pack spoofing and server pack stripping and syncs its whitelist."
             );
         }
         if (NO_CHAT_REPORTS_LOADED) {
@@ -261,6 +263,7 @@ public class OpsecConfig {
         // Null-guard avoids constructor's save→getInstance recursion; OpsecClient seeds the first build.
         if (INSTANCE != null) {
             ModRegistry.rebuildDependencyClosure();
+            aurick.opsec.mod.compat.ExploitPreventerBridge.sync();
         }
     }
 
@@ -277,27 +280,32 @@ public class OpsecConfig {
     }
 
     // Identity protection
+    // ExploitPreventer (EP) compatibility: EP 1.2.x only covers key resolution protection, local
+    // pack URL blocking and pack cache isolation, so ONLY those are deferred to it. Brand, channel
+    // and known-pack spoofing plus server pack stripping are features EP does not provide (EP
+    // explicitly leaves plugin channels alone), so OpSec keeps them active and mirrors its mod
+    // whitelist into EP via ExploitPreventerBridge.
+
     /**
-     * Whether the brand string should be overridden to "vanilla". Only true when
-     * the user opted in via the UI toggle and ExploitPreventer isn't loaded.
+     * Whether the brand string should be overridden to "vanilla". True when the user opted in via
+     * the UI toggle (also with ExploitPreventer, which does not spoof the brand).
      */
     public boolean shouldSpoofBrand() {
-        return !EXPLOIT_PREVENTER_LOADED && settings.isSpoofAsVanilla();
+        return settings.isSpoofAsVanilla();
     }
 
     /**
-     * Whether channel spoofing/filtering should be active. Independent of brand —
-     * channel filtering happens whenever OpSec is in charge (i.e., EP not loaded).
-     * The filter mode (block-all vs whitelist) is chosen by isVanillaMode/
-     * isFabricMode in SpoofSettings, which read directly from spoofAsVanilla.
+     * Whether channel spoofing/filtering should be active. Always on — ExploitPreventer does not
+     * filter plugin channels. The filter mode (block-all vs whitelist) is chosen by
+     * isVanillaMode/isFabricMode in SpoofSettings, which read directly from spoofAsVanilla.
      */
     public boolean shouldSpoofChannels() {
-        return !EXPLOIT_PREVENTER_LOADED;
+        return true;
     }
 
-    /** Same EP gate as {@link #shouldSpoofChannels()} — kept distinct so the two can diverge without churn. */
+    /** Known-pack filtering. Always on — ExploitPreventer does not filter known packs. */
     public boolean shouldSpoofKnownPacks() {
-        return !EXPLOIT_PREVENTER_LOADED;
+        return true;
     }
 
     public String getEffectiveBrand() {
@@ -340,16 +348,18 @@ public class OpsecConfig {
         return settings.getPackStripMode();
     }
 
+    /**
+     * Bypass Server Pack Requirement. Always available — ExploitPreventer has no equivalent. With EP
+     * installed, ExploitPreventerBridge marks "opsec" as allowed in EP so the language keys of
+     * stripped (wrapped) server packs keep resolving exactly like on a vanilla client.
+     */
     public boolean shouldStripPack() {
-        return !EXPLOIT_PREVENTER_LOADED;
+        return true;
     }
 
     /** The consent overlay prompt should show for an incoming push. */
     public boolean shouldShowPackOverlay() {
-        return (
-            !EXPLOIT_PREVENTER_LOADED &&
-            settings.getPackStripMode() == SpoofSettings.StripMode.ASK
-        );
+        return settings.getPackStripMode() == SpoofSettings.StripMode.ASK;
     }
 
     // Alerts and logging

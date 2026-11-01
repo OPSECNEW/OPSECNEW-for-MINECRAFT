@@ -56,6 +56,7 @@ public class OpsecClient implements ClientModInitializer {
 
 		// Scan for registered channels after all mods have initialized
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+			ModRegistry.scanInstalledModNamespaces(); // map each mod's assets/data namespaces to it
 			ModRegistry.inferJijNamespaceAliases();  // must run before scanRegisteredChannels
 			scanRegisteredChannels();
 			// Fallback: scan mods for language files if mixin didn't catch them
@@ -64,7 +65,13 @@ public class OpsecClient implements ClientModInitializer {
 			ModRegistry.indexKnownPackOwners();
 			// Initial closure seed; further rebuilds run via OpsecConfig.save().
 			ModRegistry.rebuildDependencyClosure();
+			// With ExploitPreventer installed, mirror the whitelist into it (no-op otherwise).
+			aurick.opsec.mod.compat.ExploitPreventerBridge.sync();
 		});
+
+		// Channels registered while connecting can extend the AUTO whitelist; re-sync EP on join.
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register(
+			(handler, sender, client) -> aurick.opsec.mod.compat.ExploitPreventerBridge.sync());
 
 		ClientTickEvents.END_CLIENT_TICK.register(PackStripOverlay::tryShowNext);
 		ClientTickEvents.END_CLIENT_TICK.register(client -> ShaderStripTracker.flushPending());
@@ -138,31 +145,38 @@ public class OpsecClient implements ClientModInitializer {
 				continue;
 			}
 			
-			// Check if this mod has a language file
+			// Check every asset namespace of every root path for a language file: many mods keep
+			// their texts under a namespace that differs from the mod id (adapted from OpSec
+			// Community Edition by tufkan1, GPL-3.0).
 			boolean found = false;
 			for (Path rootPath : mod.getRootPaths()) {
-				Path langFile = rootPath.resolve("assets/" + modId + "/lang/en_us.json");
-				if (Files.exists(langFile)) {
-					found = true;
-					// This mod has a language file - register it
-					try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(langFile))) {
-						JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
-						int keyCount = 0;
-						for (String key : json.keySet()) {
-							ModRegistry.recordTranslationKey(modId, key);
-							keyCount++;
+				Path assetsDir = rootPath.resolve("assets");
+				if (!Files.isDirectory(assetsDir)) continue;
+				try (var namespaces = Files.list(assetsDir)) {
+					for (Path nsDir : (Iterable<Path>) namespaces::iterator) {
+						Path langFile = nsDir.resolve("lang/en_us.json");
+						if (!Files.isRegularFile(langFile)) continue;
+						found = true;
+						try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(langFile))) {
+							JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+							int keyCount = 0;
+							for (String key : json.keySet()) {
+								ModRegistry.recordTranslationKey(modId, key);
+								keyCount++;
+							}
+							if (keyCount > 0) {
+								Opsec.LOGGER.debug("[OpSec] Fallback: Registered {} translation keys for mod '{}' (namespace {})", keyCount, modId, nsDir.getFileName());
+								modsAdded++;
+							}
+						} catch (Exception e) {
+							Opsec.LOGGER.debug("[OpSec] Could not read language file {} for {}: {}", langFile, modId, e.getMessage());
 						}
-						if (keyCount > 0) {
-							Opsec.LOGGER.debug("[OpSec] Fallback: Registered {} translation keys for mod '{}'", keyCount, modId);
-							modsWithLang++;
-							modsAdded++;
-						}
-					} catch (Exception e) {
-						Opsec.LOGGER.debug("[OpSec] Could not read language file for {}: {}", modId, e.getMessage());
 					}
-					break; // Only check first root path
+				} catch (Exception e) {
+					Opsec.LOGGER.debug("[OpSec] Could not list assets of {}: {}", modId, e.getMessage());
 				}
 			}
+			if (found) modsWithLang++;
 			
 			// If no language file found, still count if mod has channels
 			if (!found && existingInfo != null && existingInfo.hasChannels()) {

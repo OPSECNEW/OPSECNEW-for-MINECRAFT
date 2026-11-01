@@ -93,6 +93,19 @@ public class KeybindContentsMixin implements OpsecFromPacketAccess {
             return original.call(supplier);
         }
 
+        // ExploitPreventer handles key resolution, but it answers vanilla keybinds with the player's
+        // REAL binding. Keep OpSec's "Fake Default Keybinds" for vanilla keys: EP's own check runs
+        // on the result afterwards and accepts it as an allowed vanilla keybind. Mod keybinds fall
+        // through to the passthrough below and are decided by EP.
+        if (OpsecConfig.EXPLOIT_PREVENTER_LOADED && settings.isFakeDefaultKeybinds()
+                && KeybindDefaults.hasDefault(name)) {
+            String spoofedValue = KeybindDefaults.getDefault(name);
+            opsec$logBlocked(name, spoofedValue);
+            Component literal = Component.literal(spoofedValue);
+            opsec$cachedBlocked = literal;
+            return literal;
+        }
+
         // Protection disabled — passthrough with logging
         if (!config.isTranslationProtectionEnabled()) {
             Object originalResult = original.call(supplier);

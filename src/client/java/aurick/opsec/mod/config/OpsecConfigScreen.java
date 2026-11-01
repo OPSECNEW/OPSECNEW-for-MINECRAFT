@@ -210,21 +210,17 @@ public class OpsecConfigScreen extends Screen {
         // Client Brand Section
         widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.SECTION_CLIENT_BRAND)));
 
-        if (OpsecConfig.EXPLOIT_PREVENTER_LOADED) {
-            widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.EP_MANAGED_HEADER)));
-            widgets.add(createEPManagedToggle(OpsecLang.component(OpsecStrings.OPTION_SPOOF_AS_VANILLA)));
-        } else {
-            widgets.add(cycleBuilder(COLORED_BOOL_TO_TEXT, List.of(Boolean.TRUE, Boolean.FALSE), settings.isSpoofAsVanilla())
-                    .withTooltip(v -> Tooltip.create(OpsecLang.component(OpsecStrings.OPTION_SPOOF_AS_VANILLA_TOOLTIP)))
-                    .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_SPOOF_AS_VANILLA),
-                        (button, value) -> {
-                            // setSpoofAsVanilla snapshots / restores whitelistMode around
-                            // the implicit Block-All override (see SpoofSettings).
-                            settings.setSpoofAsVanilla(value);
-                            config.save();
-                            refreshScreen();
-                    }));
-        }
+        // Always interactive: ExploitPreventer does not spoof the client brand or hide channels.
+        widgets.add(cycleBuilder(COLORED_BOOL_TO_TEXT, List.of(Boolean.TRUE, Boolean.FALSE), settings.isSpoofAsVanilla())
+                .withTooltip(v -> Tooltip.create(OpsecLang.component(OpsecStrings.OPTION_SPOOF_AS_VANILLA_TOOLTIP)))
+                .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_SPOOF_AS_VANILLA),
+                    (button, value) -> {
+                        // setSpoofAsVanilla snapshots / restores whitelistMode around
+                        // the implicit Block-All override (see SpoofSettings).
+                        settings.setSpoofAsVanilla(value);
+                        config.save();
+                        refreshScreen();
+                }));
 
         // Resource Pack Protection Section
         widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.SECTION_RESOURCE_PACK)));
@@ -251,27 +247,28 @@ public class OpsecConfigScreen extends Screen {
                         .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_BLOCK_LOCAL_PACK_URLS),
                         (button, value) -> { settings.setBlockLocalPackUrls(value); config.save(); }));
             }
-
-            // Bypass Server Pack Requirement (tri-state: MANUAL / ASK / ALWAYS_ON)
-            widgets.add(cycleBuilder(
-                    (SpoofSettings.StripMode m) -> switch (m) {
-                        case MANUAL    -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_MANUAL);
-                        case ASK       -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_ASK);
-                        case ALWAYS_ON -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_ALWAYS_ON);
-                    },
-                    List.of(SpoofSettings.StripMode.values()),
-                    settings.getPackStripMode())
-                .withTooltip(v -> Tooltip.create(OpsecLang.component(switch (v) {
-                    case MANUAL    -> OpsecStrings.PACKSTRIP_MODE_MANUAL_TOOLTIP;
-                    case ASK       -> OpsecStrings.PACKSTRIP_MODE_ASK_TOOLTIP;
-                    case ALWAYS_ON -> OpsecStrings.PACKSTRIP_MODE_ALWAYS_ON_TOOLTIP;
-                })))
-                .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_PACK_STRIP_MODE),
-                    (button, value) -> {
-                        settings.setPackStripMode(value);
-                        config.save();
-                    }));
         }
+
+        // Bypass Server Pack Requirement — interactive even under EP (EP has no equivalent).
+        // Tri-state: MANUAL / ASK / ALWAYS_ON
+        widgets.add(cycleBuilder(
+                (SpoofSettings.StripMode m) -> switch (m) {
+                    case MANUAL    -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_MANUAL);
+                    case ASK       -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_ASK);
+                    case ALWAYS_ON -> OpsecLang.component(OpsecStrings.PACKSTRIP_MODE_ALWAYS_ON);
+                },
+                List.of(SpoofSettings.StripMode.values()),
+                settings.getPackStripMode())
+            .withTooltip(v -> Tooltip.create(OpsecLang.component(switch (v) {
+                case MANUAL    -> OpsecStrings.PACKSTRIP_MODE_MANUAL_TOOLTIP;
+                case ASK       -> OpsecStrings.PACKSTRIP_MODE_ASK_TOOLTIP;
+                case ALWAYS_ON -> OpsecStrings.PACKSTRIP_MODE_ALWAYS_ON_TOOLTIP;
+            })))
+            .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_PACK_STRIP_MODE),
+                (button, value) -> {
+                    settings.setPackStripMode(value);
+                    config.save();
+                }));
 
         // Strip mod shader overrides — interactive even under EP (EP does not cover this attack).
         widgets.add(cycleBuilder(COLORED_BOOL_TO_TEXT, List.of(Boolean.TRUE, Boolean.FALSE), settings.isStripModShaders())
@@ -291,6 +288,14 @@ public class OpsecConfigScreen extends Screen {
         if (OpsecConfig.EXPLOIT_PREVENTER_LOADED) {
             widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.EP_MANAGED_HEADER)));
             widgets.add(createEPManagedToggle(OpsecLang.component(OpsecStrings.OPTION_KEY_RESOLUTION_SPOOFING)));
+            // EP answers vanilla keybinds with the real binding; OpSec still fakes them to defaults.
+            widgets.add(cycleBuilder(COLORED_BOOL_TO_TEXT, List.of(Boolean.TRUE, Boolean.FALSE), settings.isFakeDefaultKeybinds())
+                .withTooltip(v -> Tooltip.create(OpsecLang.component(OpsecStrings.TOOLTIP_FAKE_DEFAULT_KEYBINDS)))
+                    .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_FAKE_DEFAULT_KEYBINDS),
+                        (button, value) -> {
+                            settings.setFakeDefaultKeybinds(value);
+                            config.save();
+                    }));
         } else {
             widgets.add(cycleBuilder(COLORED_BOOL_TO_TEXT, List.of(Boolean.TRUE, Boolean.FALSE), settings.isTranslationProtectionEnabled())
                 .withTooltip(v -> Tooltip.create(OpsecLang.component(OpsecStrings.TOOLTIP_KEY_RESOLUTION_SPOOFING)))
@@ -1007,14 +1012,9 @@ public class OpsecConfigScreen extends Screen {
         // Section header
         widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.SECTION_MOD_WHITELIST)));
 
-        if (OpsecConfig.EXPLOIT_PREVENTER_LOADED) {
-            widgets.add(createSectionHeader(OpsecLang.tr(OpsecStrings.EP_MANAGED_HEADER)));
-            CycleButton<SpoofSettings.WhitelistMode> modeButton = cycleBuilder(WhitelistModeDisplay::getDisplayName, List.of(SpoofSettings.WhitelistMode.values()), SpoofSettings.WhitelistMode.OFF)
-                    .withTooltip(v -> Tooltip.create(OpsecLang.component(OpsecStrings.EP_MANAGED_TOOLTIP)))
-                    .create(0, 0, 230, 20, OpsecLang.component(OpsecStrings.OPTION_WHITELIST_MODE), (b, v) -> {});
-            modeButton.active = false;
-            widgets.add(modeButton);
-        } else if (settings.isSpoofAsVanilla()) {
+        // Active under ExploitPreventer too: the whitelist drives OpSec's channel / known-pack
+        // filtering and is mirrored into EP's translation filter (ExploitPreventerBridge).
+        if (settings.isSpoofAsVanilla()) {
             // Spoofing as vanilla blocks ALL custom payloads, so the whitelist mode
             // is moot. Pin the cycle to OFF (Block All) and grey it out with a
             // tooltip explaining how to unlock it.
